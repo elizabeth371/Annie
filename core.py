@@ -51,6 +51,51 @@ DEFAULT_VALUES: Dict[str, str] = {
     "认证信息": "未提供",
 }
 
+# ---- 多平台 AI 服务商配置 ----
+# 所有平台均支持 OpenAI 兼容 API 协议
+# 获取 Key 的指引请参考 README 或侧边栏「💡 如何获取免费 Key？」
+AI_PROVIDERS: Dict[str, Dict[str, Any]] = {
+    "阿里云 (免费额度)": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_key_placeholder": "sk-xxxxxxxxxxxxxxxx",  # 在阿里云 DashScope 控制台获取
+        "models": ["qwen-turbo", "qwen-plus", "qwen-max"],
+        "default_model": "qwen-turbo",
+        "free_note": "阿里云 DashScope 为 qwen-turbo 等模型提供免费额度。"
+                       "注册地址: https://dashscope.console.aliyun.com/",
+    },
+    "百度 (免费额度)": {
+        "base_url": "https://qianfan.baidubce.com/v2",
+        "api_key_placeholder": "请输入百度千帆 API Key",
+        "models": ["ernie-speed", "ernie-lite", "ernie-4.0"],
+        "default_model": "ernie-speed",
+        "free_note": "百度千帆为 ERNIE-Speed 等模型提供免费额度。"
+                       "注册地址: https://console.bce.baidu.com/qianfan/",
+    },
+    "硅基流动 (低价)": {
+        "base_url": "https://api.siliconflow.cn/v1",
+        "api_key_placeholder": "sk-xxxxxxxxxxxxxxxx",
+        "models": ["deepseek-ai/DeepSeek-V2", "deepseek-ai/DeepSeek-V3",
+                    "Qwen/Qwen2.5-7B-Instruct"],
+        "default_model": "deepseek-ai/DeepSeek-V2",
+        "free_note": "硅基流动提供部分模型免费/低价调用。"
+                       "注册地址: https://siliconflow.cn/",
+    },
+    "自定义配置": {
+        "base_url": None,   # 用户需自行填入
+        "api_key_placeholder": "请输入自定义 API Key",
+        "models": [],        # 用户自行输入
+        "default_model": "gpt-3.5-turbo",
+        "free_note": "自行填入任意兼容 OpenAI 协议的 API 地址与 Key。",
+    },
+    "模拟数据演示": {
+        "base_url": None,
+        "api_key_placeholder": "",
+        "models": [],
+        "default_model": "",
+        "free_note": "无需 API Key，使用内置 3 家模拟供应商数据演示全部功能。",
+    },
+}
+
 # ---- 行业预警规则 ----
 BRIGHTNESS_WARNING_THRESHOLD = 400  # 亮度低于此值触发低亮预警（cd/m²）
 MEMORY_WARNING_THRESHOLD_GB = 4     # 内存低于此值触发卡顿风险（GB）
