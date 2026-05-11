@@ -7,7 +7,6 @@
 import io
 import json
 import logging
-import os
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -51,48 +50,34 @@ DEFAULT_VALUES: Dict[str, str] = {
     "认证信息": "未提供",
 }
 
-# ---- 多平台 AI 服务商配置 ----
-# 所有平台均支持 OpenAI 兼容 API 协议
-# 获取 Key 的指引请参考 README 或侧边栏「💡 如何获取免费 Key？」
+# ---- AI 服务商配置（支持 OpenAI 兼容 API） ----
+# 默认选中阿里云（排在第一位）
+# 在对应条目中填入 api_key、base_url、models 即可使用
+# 侧边栏会自动读取预置 Key，无需每次手动输入
 AI_PROVIDERS: Dict[str, Dict[str, Any]] = {
     "阿里云 (免费额度)": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key_placeholder": "sk-xxxxxxxxxxxxxxxx",  # 在阿里云 DashScope 控制台获取
+        "api_key_placeholder": "在阿里云 DashScope 控制台获取",
+        "api_key": "sk-35f7b5b1fb384bdfbcd8577256962daf",
         "models": ["qwen-turbo", "qwen-plus", "qwen-max"],
         "default_model": "qwen-turbo",
-        "free_note": "阿里云 DashScope 为 qwen-turbo 等模型提供免费额度。"
-                       "注册地址: https://dashscope.console.aliyun.com/",
+        "note": "阿里云 DashScope 为 qwen-turbo 提供免费额度。",
     },
     "百度 (免费额度)": {
         "base_url": "https://qianfan.baidubce.com/v2",
-        "api_key_placeholder": "请输入百度千帆 API Key",
+        "api_key_placeholder": "在百度千帆控制台获取",
+        "api_key": "bce-v3/ALTAK-Z9Sjr5aFUeO2Ngk1q3qtP/ab149a2246604349accd6a1b8122c793a562dc11",
         "models": ["ernie-speed", "ernie-lite", "ernie-4.0"],
         "default_model": "ernie-speed",
-        "free_note": "百度千帆为 ERNIE-Speed 等模型提供免费额度。"
-                       "注册地址: https://console.bce.baidu.com/qianfan/",
-    },
-    "硅基流动 (低价)": {
-        "base_url": "https://api.siliconflow.cn/v1",
-        "api_key_placeholder": "sk-xxxxxxxxxxxxxxxx",
-        "models": ["deepseek-ai/DeepSeek-V2", "deepseek-ai/DeepSeek-V3",
-                    "Qwen/Qwen2.5-7B-Instruct"],
-        "default_model": "deepseek-ai/DeepSeek-V2",
-        "free_note": "硅基流动提供部分模型免费/低价调用。"
-                       "注册地址: https://siliconflow.cn/",
+        "note": "百度千帆为 ERNIE-Speed 提供免费额度。",
     },
     "自定义配置": {
-        "base_url": None,   # 用户需自行填入
-        "api_key_placeholder": "请输入自定义 API Key",
-        "models": [],        # 用户自行输入
-        "default_model": "gpt-3.5-turbo",
-        "free_note": "自行填入任意兼容 OpenAI 协议的 API 地址与 Key。",
-    },
-    "模拟数据演示": {
         "base_url": None,
-        "api_key_placeholder": "",
+        "api_key_placeholder": "请输入自定义 API Key",
+        "api_key": "",
         "models": [],
-        "default_model": "",
-        "free_note": "无需 API Key，使用内置 3 家模拟供应商数据演示全部功能。",
+        "default_model": "gpt-3.5-turbo",
+        "note": "填入任意兼容 OpenAI 协议的 API 地址与 Key。",
     },
 }
 
@@ -109,43 +94,6 @@ MARKET_CERTIFICATION_MAP: Dict[str, List[str]] = {
     "东南亚": ["CE"],
     "不限": [],
 }
-
-# ---- 模拟数据（当用户未配置 API Key 时使用） ----
-MOCK_SUPPLIER_DATA: List[Dict[str, str]] = [
-    {
-        "厂家名称": "MaxTouch Technology Co., Ltd.",
-        "屏幕尺寸": "75\"",
-        "亮度(cd/m²)": "350 cd/m²",
-        "触控技术": "红外触控",
-        "安卓版本": "Android 12",
-        "CPU型号": "RK3588",
-        "内存/存储": "4GB+32GB",
-        "是否含OPS": "选配",
-        "认证信息": "CE, FCC, RoHS",
-    },
-    {
-        "厂家名称": "BrightVision Inc.",
-        "屏幕尺寸": "86\"",
-        "亮度(cd/m²)": "450 cd/m²",
-        "触控技术": "电容触控",
-        "安卓版本": "Android 13",
-        "CPU型号": "Amlogic T982",
-        "内存/存储": "8GB+128GB",
-        "是否含OPS": "是",
-        "认证信息": "CE, FCC, RoHS, SASO",
-    },
-    {
-        "厂家名称": "EduSmart Displays Ltd.",
-        "屏幕尺寸": "65\"",
-        "亮度(cd/m²)": "300 cd/m²",
-        "触控技术": "红外触控",
-        "安卓版本": "Android 11",
-        "CPU型号": "MTK 9950",
-        "内存/存储": "2GB+16GB",
-        "是否含OPS": "否",
-        "认证信息": "CE",
-    },
-]
 
 
 # ============================================================
@@ -259,7 +207,6 @@ def call_llm_for_extraction(
         # ---- 清理可能的 Markdown 代码块标记 ----
         if raw_output.startswith("```"):
             lines = raw_output.split("\n")
-            # 去掉首行 ```json 和末行 ```
             lines = [l for l in lines if not l.strip().startswith("```")]
             raw_output = "\n".join(lines)
 
@@ -364,31 +311,6 @@ def check_warnings(
 
 
 # ============================================================
-# 模拟数据模块
-# ============================================================
-
-def get_mock_analysis_results() -> pd.DataFrame:
-    """
-    返回模拟分析结果 DataFrame，供无 API Key 时演示使用。
-    包含完整的字段数据和预警信息列。
-
-    Returns:
-        pandas DataFrame 包含供应商对比数据。
-    """
-    records: List[Dict[str, Any]] = []
-    for data in MOCK_SUPPLIER_DATA:
-        record = dict(data)
-        warnings = check_warnings(record, target_market="不限")
-        record["预警信息"] = "; ".join([f"[{w['类型']}]{w['详情']}" for w in warnings])
-        records.append(record)
-    df = pd.DataFrame(records)
-    # 重新排序列，把预警信息放在最后
-    col_order = list(EXTRACTION_FIELDS.keys()) + ["预警信息"]
-    df = df[col_order]
-    return df
-
-
-# ============================================================
 # 数据导出模块
 # ============================================================
 
@@ -448,7 +370,6 @@ def process_pdf_files(
     model_name: str = "gpt-3.5-turbo",
     temperature: float = 0.0,
     target_market: str = "不限",
-    use_mock: bool = False,
 ) -> pd.DataFrame:
     """
     批量处理 PDF 文件，依次执行: PDF 文本提取 → AI 字段提取 → 预警检测 → 汇总成 DataFrame。
@@ -460,30 +381,24 @@ def process_pdf_files(
         model_name: 模型名称。
         temperature: 生成温度。
         target_market: 目标市场（用于认证预警）。
-        use_mock: 是否强制使用模拟数据（API Key 未配置时自动启用）。
 
     Returns:
         包含所有供应商对比数据的 pandas DataFrame。
     """
-    # ---- 判断是否需要使用模拟数据 ----
-    if use_mock or not api_key:
-        logger.info("未配置 API Key，使用模拟数据进行演示。")
-        # 模拟延迟效果，让用户感知处理过程
-        import time
-
-        time.sleep(0.5)
-        df = get_mock_analysis_results()
-        # 根据目标市场重新计算预警
-        for idx in range(len(df)):
-            record = dict(df.iloc[idx])
-            warnings = check_warnings(record, target_market=target_market)
-            df.at[idx, "预警信息"] = "; ".join(
-                [f"[{w['类型']}]{w['详情']}" for w in warnings]
-            )
-        return df
-
-    # ---- 真实处理流程 ----
     all_records: List[Dict[str, Any]] = []
+
+    # ---- 检查 API 配置有效性 ----
+    if not api_key or not api_base:
+        logger.warning(
+            "API Key 或 Base URL 未配置，AI 提取将不可用。"
+            "请先在侧边栏填入有效的 Key。"
+        )
+        # 返回一个空 DataFrame 带提示
+        df_empty = pd.DataFrame(
+            [{**DEFAULT_VALUES, "预警信息": "[错误]请先在侧边栏配置 API Key 和 Base URL。"}]
+        )
+        col_order = list(EXTRACTION_FIELDS.keys()) + ["预警信息"]
+        return df_empty[col_order]
 
     for i, pdf_bytes in enumerate(pdf_files):
         logger.info(f"正在处理第 {i+1}/{len(pdf_files)} 个 PDF 文件...")

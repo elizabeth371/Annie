@@ -16,7 +16,6 @@ from core import (
     export_to_csv,
     export_to_excel,
     process_pdf_files,
-    get_mock_analysis_results,
 )
 
 # ===================== 页面配置 =====================
@@ -70,7 +69,7 @@ html, body, [class*="css"] {
 # ===================== 初始化 session_state =====================
 # 持久化用户在侧边栏的输入，避免 Streamlit rerun 时丢失
 if "selected_provider" not in st.session_state:
-    st.session_state.selected_provider = "模拟数据演示"
+    st.session_state.selected_provider = None
 if "provider_api_key" not in st.session_state:
     st.session_state.provider_api_key = ""
 if "selected_model" not in st.session_state:
@@ -86,26 +85,31 @@ with st.sidebar:
     # ===== Step 1: 选择 AI 服务商 =====
     st.subheader("🤖 AI 服务商")
     provider_names = list(AI_PROVIDERS.keys())
-    # 默认索引：优先定位到"模拟数据演示"
-    default_idx = provider_names.index("模拟数据演示") if "模拟数据演示" in provider_names else 0
+    # 默认选中阿里云（排在第一位）
+    if st.session_state.selected_provider is None:
+        st.session_state.selected_provider = provider_names[0]
+
+    # 确定当前选中的索引
+    current_provider = st.session_state.selected_provider
+    if current_provider not in provider_names:
+        current_provider = provider_names[0]
+    default_idx = provider_names.index(current_provider)
+
     selected_provider = st.selectbox(
         "选择 AI 服务商",
         options=provider_names,
         index=default_idx,
-        help="选择要使用的 AI 平台。含免费额度的平台已直接内置 Base URL。",
+        help="选择要使用的 AI 平台。阿里云、百度提供免费额度，Key 已预置。",
         key="provider_selector",
     )
-    # 将当前选择同步到 session_state（下游代码以此为权威来源）
+    # 同步到 session_state
     st.session_state.selected_provider = selected_provider
     provider_cfg = AI_PROVIDERS[selected_provider]
 
     # ===== Step 2: 动态 API Key 输入 =====
     st.subheader("🔑 API Key")
-    if selected_provider == "模拟数据演示":
-        # 模拟数据模式不需要 Key
-        st.info("✨ 使用内置模拟数据演示，无需 API Key。")
-        api_key = ""
-    elif selected_provider == "自定义配置":
+
+    if selected_provider == "自定义配置":
         # 自定义配置：让用户自由输入 Key 和 Base URL
         api_key = st.text_input(
             "API Key",
@@ -118,7 +122,7 @@ with st.sidebar:
         st.session_state.provider_api_key = api_key
 
         # 自定义 Base URL
-        custom_base_url = st.text_input(
+        base_url = st.text_input(
             "API Base URL",
             value="https://api.openai.com/v1",
             placeholder="https://api.openai.com/v1",
@@ -126,26 +130,31 @@ with st.sidebar:
             key="custom_base_url",
         )
         # 自定义模型名
-        custom_model_input = st.text_input(
+        model_name = st.text_input(
             "模型名称",
-            value="gpt-3.5-turbo",
+            value=provider_cfg.get("default_model", "gpt-3.5-turbo"),
             placeholder="如 gpt-3.5-turbo / qwen-turbo",
             help="输入模型名称（需与 Base URL 对应平台匹配）。",
             key="custom_model_input",
         )
-        model_name = custom_model_input
-        base_url = custom_base_url
     else:
-        # 预设平台（阿里云/百度/硅基流动）：需用户填入自己的 Key
+        # 预设平台（阿里云/百度）：自动读取预置 Key
         st.caption(
-            f"💡 {provider_cfg.get('free_note', '该平台提供免费额度。')}"
+            f"💡 {provider_cfg.get('note', '该平台提供免费额度。')}"
         )
+        # 从配置中读取预置 Key
+        preset_key = provider_cfg.get("api_key", "")
+        if preset_key:
+            st.success(f"✅ 已预置 API Key（{selected_provider}），可直接使用。")
+        # 如果 session_state 中还没有该平台的值，就使用预置值
+        if not st.session_state.provider_api_key:
+            st.session_state.provider_api_key = preset_key
         api_key = st.text_input(
             "API Key",
             type="password",
             value=st.session_state.provider_api_key,
             placeholder=provider_cfg["api_key_placeholder"],
-            help="在对应平台控制台获取 API Key 后填入此处。",
+            help="已自动填入预置 Key，也可以手动修改。",
             key="platform_api_key",
         )
         st.session_state.provider_api_key = api_key
@@ -154,11 +163,9 @@ with st.sidebar:
 
     # ===== Step 3: 动态模型选择 =====
     st.subheader("🧠 模型选择")
-    if selected_provider == "模拟数据演示":
-        model_name = ""
-        st.info("模拟模式无需选择模型。")
-    elif selected_provider == "自定义配置":
-        # model_name 已在上面的自定义区域定义，这里不再重复
+
+    if selected_provider == "自定义配置":
+        # model_name 已在上面的自定义区域定义
         st.caption(f"当前模型: **{model_name}**")
     else:
         # 预设平台：从配置中拉取模型列表
@@ -197,21 +204,12 @@ with st.sidebar:
         help="根据目标市场检测必要的产品认证（如 CE、SASO、FCC 等）。",
     )
 
-    # ===== Step 6: 模拟演示开关 =====
-    st.divider()
-    st.subheader("🧪 演示模式")
-    use_mock = st.checkbox(
-        "强制使用模拟数据",
-        value=(selected_provider == "模拟数据演示"),
-        help="勾选后将忽略 AI 配置，使用内置的 3 家模拟供应商数据。",
-    )
-
-    # ===== Step 7: 使用提示 =====
+    # ===== Step 6: 使用提示 =====
     st.divider()
     st.markdown(
         """
         **📋 使用步骤：**
-        1. 选择 AI 服务商 & 填 Key
+        1. 选择 AI 服务商（Key 已预置）
         2. 上传 PDF 规格书
         3. 选择目标市场
         4. 点击「开始分析」
@@ -219,8 +217,8 @@ with st.sidebar:
         """
     )
 
-    # ===== Step 8: 免费 Key 获取说明 =====
-    with st.expander("💡 如何获取免费 Key？", expanded=False):
+    # ===== Step 7: 免费 Key 获取说明 =====
+    with st.expander("💡 如何获取其他平台 Key？", expanded=False):
         st.markdown(
             """
             ### 各平台免费额度获取指引
@@ -235,11 +233,6 @@ with st.sidebar:
             - ERNIE-Speed 等模型提供免费额度
             - 在控制台 → 应用接入 中获取 API Key
 
-            **🔹 硅基流动（SiliconFlow）**
-            - 注册: https://siliconflow.cn/
-            - 部分模型（如 DeepSeek-V2）提供免费/低价调用
-            - 注册后在 API 管理页面获取 Key
-
             **🔹 自定义配置**
             - 支持任意 OpenAI 兼容接口
             - 包括: OpenAI, OpenRouter, Azure, Ollama, LocalAI 等
@@ -248,7 +241,7 @@ with st.sidebar:
         )
 
     st.caption(
-        f"© 2026 Sourcing Agent v1.0 | {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        f"© 2026 Sourcing Agent v2.0 | {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     )
 
 # ===================== 主页面 =====================
@@ -288,26 +281,13 @@ if analyze_btn and uploaded_files:
 
     with st.spinner(f"正在分析 {len(uploaded_files)} 份规格书，请稍候..."):
         try:
-            # ---- 根据服务商选择动态组装参数 ----
-            if use_mock or selected_provider == "模拟数据演示":
-                effective_api_key = ""
-                effective_base_url = ""
-                effective_model = ""
-                effective_use_mock = True
-            else:
-                effective_api_key = api_key
-                effective_base_url = base_url
-                effective_model = model_name
-                effective_use_mock = False
-
             df_result = process_pdf_files(
                 pdf_files=pdf_bytes_list,
-                api_base=effective_base_url,
-                api_key=effective_api_key,
-                model_name=effective_model,
+                api_base=base_url,
+                api_key=api_key,
+                model_name=model_name,
                 temperature=temperature,
                 target_market=target_market,
-                use_mock=effective_use_mock,
             )
             st.session_state.analysis_result = df_result
             st.session_state.processed_files_count = len(uploaded_files)
@@ -449,9 +429,9 @@ else:
             - 包含完整数据和预警信息，可直接用于汇报
 
             ### 🔧 使用方式
-            - **模拟数据演示**：无需任何 Key，自动使用内置 3 家模拟供应商
-            - **阿里云/百度免费额度**：注册后获取免费 Key 即可使用
-            - **自定义配置**：支持任何 OpenAI 兼容接口（OpenRouter、Ollama 等）
+            - **阿里云（默认）**：Key 已预置，开箱即用，免费额度充足
+            - **百度千帆**：Key 已预置，同样提供免费额度
+            - **自定义配置**：支持任何 OpenAI 兼容接口（OpenAI、OpenRouter、Ollama 等）
             """
         )
 
